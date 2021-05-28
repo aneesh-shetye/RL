@@ -15,25 +15,24 @@ env = gym.make('MiniGrid-Empty-8x8-v0')
 observation = env.reset()
 
 #nA = env.action_space.n
-nA = 3
+nA = 5 
 
 done = False
-policy = [[[random.choice([0,1,2]) for _ in range(8)] for __ in range(8)] for ___ in range(4)]
+#policy = [[[random.choice([0,1,2]) for _ in range(8)] for __ in range(8)] for ___ in range(4)]
+policy = np.zeros([4,8,8], dtype=int)
 # policy.shape = no_of_rows in grid, no_columns in grid
-policy = np.array(policy)
+#policy = np.array(policy)
 
 Q = np.zeros([4, 8, 8, nA]) 
 
 alpha = 0.8 
-gamma = 0.95
-epsilon = 0.001
 
 def sarsa(policy,
           Q,
           render,
           alpha = 0.8 , 
           gamma = 0.95, 
-          epsilon = 0.001): 
+          epsilon = 0.1): 
 
     observation = env.reset()
     done = False
@@ -48,32 +47,28 @@ def sarsa(policy,
 
         state = env.agent_pos
         direction = env.agent_dir 
-        action = policy[direction, state[0], state[1]]
         
+        if [True, False][random.random()<epsilon]:
+            action = policy[direction, state[0], state[1]]
+        
+        else : 
+
+            action = random.choice([0, 1, 2, 3, 4])
+
         observation , reward, done, info = env.step(action)
         
         new_state = env.agent_pos
         new_direction = env.agent_dir  
-
         
         Q[direction, state[0], state[1], action] = Q[direction, state[0], state[1],  action] + alpha*(reward + gamma*( Q[new_direction, new_state[0], new_state[1], policy[new_direction,  new_state[0], new_state[1]]]) - Q[direction, state[0], state[1], action])
 
-
-        if [True, False][random.random()>epsilon]:
-
-            policy[direction, state[0], state[1]] = np.max(Q[direction, state[0], state[1]])
-
-        else : 
-
-            policy[direction, state[0], state[1]] = random.choice([0,1,2])
-
-
+        policy[direction, state[0], state[1]] = np.argmax(Q[direction, state[0], state[1]])
 
     return policy, Q , time 
 
-time_steps = np.zeros(400)
+time_steps = np.zeros(500)
 
-for episode in range(400): 
+for episode in range(500): 
     
 
     print("Episode number: ", episode)
@@ -83,14 +78,18 @@ for episode in range(400):
     else: 
         render = False
 
+    epsilon = (0.999)**episode 
     policy, Q, time= sarsa(policy = policy,
                       Q = Q,
-                      render = render)
+                      render = render,
+                      epsilon = epsilon)
 
     time_steps[episode] = time
 
-print(time_steps)
-
-
+plt.figure()
+plt.plot(time_steps)
+plt.pause(0.001)
+plt.show()
+plt.pause(60)
 
 env.close()

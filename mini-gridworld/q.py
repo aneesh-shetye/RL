@@ -9,7 +9,7 @@ matplotlib.use("TkAgg")
 env = gym.make('MiniGrid-Empty-8x8-v0')
 observation = env.reset()
 
-nA = 3 
+nA = 4 
 
 done = False 
 
@@ -20,19 +20,28 @@ epsilon = 0.001
 
 Q = np.zeros([4, 8, 8, nA])
 
-policy = np.array([[[random.choice([0,1,2]) for _ in range(8)] for __ in range(8)] for ___ in range(4) ])
+# policy = np.array([[[random.choice([0,1,2]) for _ in range(8)] for __ in range(8)] for ___ in range(4) ])
+policy = np.zeros([4, 8, 8], int)
 
 
-for episode in range(500): 
+def q_learning(policy:np.array, 
+               Q: np.array, 
+               render:bool, 
+               alpha:float = 0.5, 
+               gamma:float = 0.95,
+               epsilon: float = 0.1): 
 
     observation = env.reset()
+
     done = False
+
     print("New episode")
 
     time_steps = 0 
+
     while not done : 
 
-        if episode%50 == 0 :
+        if render:
 
             env.render()
         
@@ -40,7 +49,14 @@ for episode in range(500):
         
         direction = env.agent_dir
 
-        action = policy[direction, state[0], state[1]]
+        # action = policy[direction, state[0], state[1]]
+        if [True, False][random.random()<epsilon]: 
+
+            action = policy[direction, state[0], state[1]]
+
+        else : 
+
+            action = random.choice([0,1,2,3])
 
         observation, reward, done , info = env.step(action) 
 
@@ -48,22 +64,42 @@ for episode in range(500):
 
         new_direction = env.agent_dir
 
+        # print(state, new_state, action, direction, new_direction)
         Q[direction, state[0], state[1], action] = Q[direction, state[0], state[1], action] + alpha*(reward + gamma*np.max(Q[new_direction, new_state[0], new_state[1]]) - Q[direction, state[0], state[1], action])
 
         
-        if [True, False][random.random()> epsilon]: 
-            policy[direction, state[0],state[1]] = np.max(Q[direction, state[0], state[1]])
-            action = policy[direction, state[0], state[1]]
-
-        else : 
-            policy[direction, state[0], state[1]] = random.choice([0,1,2])
+        policy[direction, state[0],state[1]] = np.argmax(Q[direction, state[0], state[1]])
       
         time_steps += 1
 
     print("Episode", episode, "completed") 
 
-    print(time_steps) 
+    return policy, Q, time_steps 
+
+time_steps = np.zeros(500)
+
+for episode in  range(500):
+
+    render = False
+
+    if episode%100 == 0: 
+        
+        render = True
+
+    epsilon = 0.999**episode
+
+    policy, Q, time = q_learning(policy=policy,
+                                       Q = Q, 
+                                       render = render, 
+                                       epsilon = epsilon)
+
+    time_steps[episode] = time
 
 
-
+plt.figure()
+plt.plot(time_steps)
+plt.pause(0.001)
+plt.show()
+plt.pause(60)
+env.close()
 
