@@ -76,9 +76,9 @@ def q_learning(policy:np.array,
 
     return policy, Q, time_steps 
 
-time_steps = np.zeros(500)
+time_steps = np.zeros(100)
 
-for episode in  range(500):
+for episode in  range(100):
 
     render = False
 
@@ -96,8 +96,8 @@ for episode in  range(500):
     time_steps[episode] = time
 
 
-plt.figure()
-plt.plot(time_steps)
+fig = plt.figure()
+plt.plot("time_steps", time_steps)
 plt.pause(0.001)
 plt.show()
 plt.pause(60)
