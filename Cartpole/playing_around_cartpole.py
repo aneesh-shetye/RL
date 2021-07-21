@@ -4,28 +4,20 @@ import numpy as np
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib
+import matplotlib.pyplot as plt
 
 from torch import tensor
 
 random.seed(10)
 
 env = gym.make('CartPole-v0')
-# for i_episode in range(20):
-#     observation = env.reset()
-#     for t in range(100):
-#         env.render()
-#         print(type(observation))
-#         action = env.action_space.sample()
-#         print(type(action))
-        
-#         observation, reward, done, info = env.step(action)
-#         print(type(reward))
 
-
-#         if done:
-#             print("Episode finished after {} timesteps".format(t+1))
-#             break
-env.close()
+'''
+observation is  a nparray of shape : (4,)
+reard is a float 
+action is either  0 or 1
+'''
 
 class Q(nn.Module): 
 
@@ -51,118 +43,166 @@ class Q(nn.Module):
         output = F.relu(self.fc4(output))
         output = F.relu(self.fc5(output)) # output.shape = [batch_size, 2]
             
-        # value on index 0 is for action -1
+        # value on index 0 is for action 0
 
         return output
 
 
-def policy(q_value : tensor): 
+def policy(q_value : tensor,
+        epsilon: float): 
 
-    return q_value.max().item()
+    # print(q_value.shape)
+    if [True, False][random.random()<epsilon]:
+        action = int(q_value.argmax().item())
+    else: 
+        action = random.sample([0, 1], 1)[0]
+    return action
+
+# we will be using policy for a step so max() will do 
 
 
 def episode(env, 
+            q_ref:nn.Module,
             q: nn.Module, 
-            epsilon: float):
+            epsilon: float,
+            render: bool, 
+            memory: dict ):
 
     prev_observation = env.reset()
 
     done = False
 
-    memory = []
+    if render : 
 
+        env.render()
 
+    time_steps = 0 
     while not done:  
 
-        q_value = q(torch.as_tensor(prev_observation))
+        q_value = q(prev_observation)
 
-        if [True, False][random.random()<epsilon]:
-            action = int(policy(q_value))
-        else: 
-            action = random.sample([0, 1], 1)[0]
-
+        action = policy(q_value, epsilon)
         observation , reward, done, info = env.step(action)
 
-        memory.append([prev_observation, action, observation, reward, done])
+        memory["prev_obs"].append(prev_observation)
+        memory["action"].append(action)
+        memory["reward"].append(reward)
+        memory["obs"].append(observation)
+        memory["done"].append(done)
 
         prev_observation = observation
 
-    return memory
+        loss = train(memory=memory, q_ref=q_ref, q=q, criterion=criterion, optimizer=optimizer, gamma=0.9)
 
-def train(q: nn.Module,
-          criterion: nn.Module,
-          optimizer: torch.optim,
-          gamma: float, 
-          batch_size: int = 16):
+        time_steps +=1
 
-    q_ref  = Q()  # this will be used to calculate the targets 
-                  # its parameters will be reset to the other q function after 50 episodes
-    # q_ref.detach()
+    return memory, time_steps
 
-    memory = []
-    memory.append(episode(env, q, epsilon = 0.9))
+# memory = episode(env= env, q= Q(), epsilon = 0.01, render=True, memory=memory)
+# print(memory)
 
-    memory = memory[0]
 
-    # print(np.shape(memory))
-
-    try:
+def train(memory: dict, 
+        q_ref: nn.Module, 
+        q: nn.Module, 
+        criterion: nn.Module, 
+        optimizer: torch.optim, 
+        gamma: float, 
+        batch_size: int = 16 ): 
     
-        buffer = random.sample(memory, batch_size)
+    if len(memory["action"]) < batch_size: 
+        batch_size = len(memory["action"])
 
-    except: 
+    indices = random.sample(range(len(memory["action"])), batch_size)
+    # prev_obs = random.sample(memory["prev_obs"], batch_size)
+    # obs = random.sample(memory["obs"], batch_size)
+    # action = random.sample(memory["action"], batch_size)
+    # reward = random.sample(memory["reward"], batch_size)
+    # done = random.sample(memory["done"], batch_size)
+    prev_obs = [memory["prev_obs"][i] for i in indices]
+    obs = [memory["obs"][i] for  i in indices ]
+    action = [memory["action"][i] for i in indices]
+    reward = [memory["reward"][i] for i in indices]
+    done = [memory["done"][i] for i in indices]
 
-        buffer = random.sample(memory, len(memory))
+    prev_observations = np.zeros([4, 1])
 
-    # print(np.shape(buffer))
+    for x in prev_obs: 
 
-    # print(buffer)
+        x = x.reshape([4, 1])
+        # print(prev_observations.shape, x.shape)
+        prev_observations = np.concatenate((prev_observations, x), 1)
+    
+    prev_obs = prev_observations[: , 1:]
 
-    prev_observation = np.array([x[0] for x in buffer ])
+    done = [1 if not x else 0 for x in done]
+    done = torch.tensor(done, requires_grad=False)
 
-    prev_observation = torch.as_tensor(prev_observation)
+    reward = torch.tensor(reward, requires_grad=False)
 
-    observation = np.array([x[2] for x in buffer ])
+    with torch.no_grad(): 
+        output = q_ref(prev_obs.T)
+        output, _ = output.max(1)
+        y = reward + gamma*done*output
 
-    observation = torch.as_tensor(observation)
+    observation = np.zeros([4, 1])
 
-    action = np.array([x[1] for x in buffer ])
+    for x in obs: 
 
-    action = torch.as_tensor(action)
-
-    reward = np.array([x[3] for x in buffer ])
-
-    reward = torch.as_tensor(reward)
-
-    done = [ 1 if not x[4] else 0 for x in buffer]
-
-    done = torch.tensor(done)
-
-    # print(q(observation))
-
-    with torch.no_grad():          
-        print(reward.shape, done.shape, q_ref(observation).max(1))
-        y = reward + gamma*done*(q_ref(observation).max(1))
-
-    # print(y)
+        x = x.reshape([4, 1])
+        observation = np.concatenate((observation, x), 1)
+    
+    obs = observation[: , 1:]
+    
+    c = range(len(action))
+    prediction = q(obs.T)[c, action]
 
     optimizer.zero_grad()
 
-    q_value = q(prev_observation)
-
-    loss = criterion(y, q_value)
+    # print(prediction.shape, y.shape)
+    loss = criterion(prediction, y)
 
     loss.backward()
-
     optimizer.step()
 
-    print(loss)   
+    return loss 
 
 
 
-
+q_ref = Q()
 q = Q()
-criterion = nn.MSELoss() 
+
 optimizer = torch.optim.SGD(q.parameters(), lr=0.05)
 
-train(q, criterion=criterion, optimizer=optimizer, gamma = 0.1)
+criterion = nn.MSELoss()
+
+memory = {"prev_obs" :[], 
+              "action" :[], 
+              "reward" :[],
+              "obs" :[], 
+              "done" : []
+            }
+    
+updates = 8000
+
+time_stamps = []
+
+for i in range(updates): 
+
+    memory, time_steps = episode(env= env, q_ref= q_ref,q=q,  epsilon = 200/(200+i), render=False, memory=memory)
+
+    time_stamps.append(time_steps)
+
+    if i%25 == 0 : 
+        q_ref.load_state_dict(q.state_dict())
+        # print(loss)
+
+    if i%100 == 0:
+        # print(loss)
+        print(time_steps)
+
+ypoints = np.array(time_stamps)
+xpoints = np.array(range(len(time_stamps)))
+plt.plot(xpoints, ypoints)
+plt.show()   
+
