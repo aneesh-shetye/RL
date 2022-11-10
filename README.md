@@ -1,4 +1,4 @@
-This repository contains an implementation of Basic RL algorithms in OpenAI Gym environment.
+This repository contains an implementation of Basic RL algorithms in OpenAI Gym and other environments.
 
 | Name of environment | Algorithm used | 
 |------|------|
